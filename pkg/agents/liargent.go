@@ -2,14 +2,14 @@ package agents
 
 import (
 	"github.com/google/uuid"
+	"sync"
 )
 
 type LiarAgent struct {
-	ID      uuid.UUID
-	value   int
-	conn    chan LiarsLieMessageRequest
-	connOut chan LiarsLieMessageResult
-	Online  bool
+	ID     uuid.UUID
+	value  int
+	Online bool
+	Peers  AgentsRegistry
 }
 
 func NewLiarAgent(id uuid.UUID, value int) LiarAgent {
@@ -19,8 +19,15 @@ func NewLiarAgent(id uuid.UUID, value int) LiarAgent {
 	}
 }
 
-func (a *LiarAgent) GetValue(msg *MessageGetValue) *MessageGetValueResult {
-	return &MessageGetValueResult{
+func (a *LiarAgent) GetValue(msg *MessageGetValue, chOut chan MessageGetValueResult, wg *sync.WaitGroup) {
+	chOut <- MessageGetValueResult{
+		ID:    msg.ID,
+		Value: a.value,
+	}
+}
+
+func (a *LiarAgent) GetValueExpert(msg *MessageGetValue, chOut chan MessageGetValueResult) {
+	chOut <- MessageGetValueResult{
 		ID:    msg.ID,
 		Value: a.value,
 	}
@@ -28,18 +35,6 @@ func (a *LiarAgent) GetValue(msg *MessageGetValue) *MessageGetValueResult {
 
 func (a *LiarAgent) SetOnline(v bool) {
 	a.Online = v
-}
-
-func (a *LiarAgent) StartProcessing() {
-	a.Online = true
-	for msg := range a.conn {
-		if msg.MessageGetValue != nil {
-			result := a.GetValue(msg.MessageGetValue)
-			a.connOut <- LiarsLieMessageResult{
-				MessageGetValueResult: result,
-			}
-		}
-	}
 }
 
 func (a *LiarAgent) IsOnline() bool {

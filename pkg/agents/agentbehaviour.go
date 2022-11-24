@@ -1,8 +1,7 @@
 package agents
 
 type AgentBehaviour interface {
-	GetValue(msg *MessageGetValue) *MessageGetValueResult
-	StartProcessing()
+	GetValue(msg *MessageGetValue, chOut chan MessageGetValueResult)
 	IsOnline() bool
 	SetOnline(v bool)
 }

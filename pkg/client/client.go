@@ -8,18 +8,21 @@ import (
 	"github.com/spf13/cobra"
 	"liarslie/pkg/agents"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"strings"
 )
 
+var CurrentClient LiarsLieClient
+
 type LiarsLieClient struct {
-	StartedAgents bool
-	Agents        agents.AgentsPool
+	Agents agents.AgentsRegistry
 }
 
-func spawnLiars(pool agents.AgentsPool, maxValue int, liarRatio float32) {
-	numLiars := int(1 * liarRatio)
+func spawnLiars(pool agents.AgentsRegistry, maxValue int, liarRatio float32, numAgents int) {
+	numLiars := int(math.Round(float64(float32(numAgents) * liarRatio)))
+	fmt.Println("Num liars: ", numLiars)
 	for i := 0; i < numLiars; i++ {
 		id := uuid.New()
 		value := rand.Intn(maxValue + 1)
@@ -28,8 +31,9 @@ func spawnLiars(pool agents.AgentsPool, maxValue int, liarRatio float32) {
 	}
 }
 
-func spawnHonestAgents(pool agents.AgentsPool, value int, numAgents int, liarRatio float32) {
-	numHonest := int((1 - liarRatio) * float32(numAgents))
+func spawnHonestAgents(pool agents.AgentsRegistry, value int, numAgents int, liarRatio float32) {
+	numHonest := int(math.Round(float64((1 - liarRatio) * float32(numAgents))))
+	fmt.Println("Num honest: ", numHonest)
 	for i := 0; i < numHonest; i++ {
 		id := uuid.New()
 		agent := agents.NewHonestAgent(id, value)
@@ -37,18 +41,18 @@ func spawnHonestAgents(pool agents.AgentsPool, value int, numAgents int, liarRat
 	}
 }
 
-func LaunchAgents(value int, maxValue int, numAgents int, liarRatio float32) (*agents.AgentsPool, error) {
+func LaunchAgents(value int, maxValue int, numAgents int, liarRatio float32) (*agents.AgentsRegistry, error) {
 	if liarRatio < 0 || liarRatio > 1 {
 		return nil, errors.New("Invalid liar ratio, must be between 0 and 1.")
 	}
-	pool := agents.AgentsPool{}
+	pool := agents.AgentsRegistry{}
 
 	spawnHonestAgents(pool, value, numAgents, liarRatio)
-	spawnLiars(pool, maxValue, liarRatio)
+	spawnLiars(pool, maxValue, liarRatio, numAgents)
 
 	return &pool, nil
 }
-func writeConfigFile(pool *agents.AgentsPool) {
+func writeConfigFile(pool *agents.AgentsRegistry) {
 	f, err := os.Create("app.config")
 	if err != nil {
 		log.Fatal(err)
@@ -62,20 +66,31 @@ func writeConfigFile(pool *agents.AgentsPool) {
 		}
 	}
 }
+
+func cleanFile() {
+	f, err := os.Create("app.config")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer f.Close()
+	f.WriteString("")
+
+}
+
 func StartClient(rootCmd *cobra.Command, value int, maxValue int, numAgents int, liarRatio float32) {
 
 	reader := bufio.NewReader(os.Stdin)
 	pool, err := LaunchAgents(value, maxValue, numAgents, liarRatio)
 	for _, agent := range *pool {
 		agent.SetOnline(true)
-		go agent.StartProcessing()
 	}
 	writeConfigFile(pool)
 	if err != nil {
 		fmt.Sprintf("Error launching agents: %s", err.Error())
 		os.Exit(1)
 	}
-	_ = LiarsLieClient{
+	CurrentClient = LiarsLieClient{
 		Agents: *pool,
 	}
 	for {
@@ -83,21 +98,42 @@ func StartClient(rootCmd *cobra.Command, value int, maxValue int, numAgents int,
 		text, _ := reader.ReadString('\n')
 		text = strings.Trim(text, "\r\n")
 
-		//split the text into pieces by spaces
+		if strings.Compare(text, "exit") == 0 {
+
+			log.Println("Exiting....")
+			os.Exit(0)
+		}
+
 		cmdPieces := strings.Split(text, " ")
 		if len(cmdPieces) == 0 || (len(cmdPieces) == 1 && cmdPieces[0] == "") {
 			continue
 		}
-
-		command, args, err := rootCmd.Find([]string{cmdPieces[0]})
-		if err != nil || command == rootCmd {
+		command, args, err := rootCmd.Parent().Find([]string{cmdPieces[0]})
+		if err != nil {
 			log.Printf("Unknown Command to execute : %s\n", text)
 			continue
 		}
 
 		args = append(args, cmdPieces[1:]...)
-
 		command.Run(command, args)
 		command.Execute()
+		//if err != nil || command == rootCmd {
+		//	log.Printf("Unknown Command to execute : %s\n", text)
+		//	continue
+		//}
+		//
+		//args = append(args, cmdPieces[1:]...)
+		//
+		//command.Run(command, args)
+		//command.Execute()
 	}
+}
+
+func StopClient() {
+
+	for _, val := range CurrentClient.Agents {
+		val.SetOnline(false)
+	}
+	cleanFile()
+	os.Exit(0)
 }

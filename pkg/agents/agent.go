@@ -2,14 +2,19 @@ package agents
 
 import (
 	"github.com/google/uuid"
+	"liarslie/pkg/client"
 )
 
 type Agent struct {
-	ID      uuid.UUID
-	value   int
-	conn    chan LiarsLieMessageRequest
-	connOut chan LiarsLieMessageResult
-	Online  bool
+	ID     uuid.UUID
+	value  int
+	Online bool
+}
+
+func (a *Agent) GetPeers() *AgentsRegistry {
+	result := ReadConfigFile()
+	return result
+
 }
 
 func NewHonestAgent(ID uuid.UUID, Value int) Agent {
@@ -18,25 +23,36 @@ func NewHonestAgent(ID uuid.UUID, Value int) Agent {
 		value: Value,
 	}
 }
-func (a *Agent) GetValue(msg *MessageGetValue) *MessageGetValueResult {
-	return &MessageGetValueResult{
+func (a *Agent) GetValue(msg *MessageGetValue, chOut chan MessageGetValueResult) {
+	chOut <- MessageGetValueResult{
 		ID:    msg.ID,
 		Value: a.value,
 	}
 }
 
-func (a *Agent) SetOnline(v bool) {
-	a.Online = v
-}
-func (a *Agent) StartProcessing() {
-	for msg := range a.conn {
-		if msg.MessageGetValue != nil {
-			result := a.GetValue(msg.MessageGetValue)
-			a.connOut <- LiarsLieMessageResult{
-				MessageGetValueResult: result,
-			}
+func (a *Agent) GetValueExpert(msg *MessageGetValue, chOut chan MessageGetValueResult) {
+	agentsNet := a.GetPeers()
+	onlineAgents := 0
+	chAgents := make(chan MessageGetValueResult)
+	for _, agent := range *agentsNet {
+		agent.GetValue(msg, chAgents)
+		if agent.IsOnline() {
+			onlineAgents += 1
 		}
 	}
+	var values []int
+	for msg := range chAgents {
+		values = append(values, msg.Value)
+	}
+	maxVal := client.FindMajorityValue(values, onlineAgents)
+	chOut <- MessageGetValueResult{
+		ID:    msg.ID,
+		Value: maxVal,
+	}
+}
+
+func (a *Agent) SetOnline(v bool) {
+	a.Online = v
 }
 
 func (a *Agent) IsOnline() bool {

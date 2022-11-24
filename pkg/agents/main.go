@@ -2,4 +2,4 @@ package agents
 
 import "github.com/google/uuid"
 
-type AgentsPool map[uuid.UUID]AgentBehaviour
+type AgentsRegistry map[uuid.UUID]AgentBehaviour
