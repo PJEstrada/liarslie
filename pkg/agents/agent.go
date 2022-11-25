@@ -2,7 +2,7 @@ package agents
 
 import (
 	"github.com/google/uuid"
-	"liarslie/pkg/client"
+	"liarslie/pkg/consensus"
 )
 
 type Agent struct {
@@ -11,10 +11,23 @@ type Agent struct {
 	Online bool
 }
 
-func (a *Agent) GetPeers() *AgentsRegistry {
-	result := ReadConfigFile()
-	return result
-
+// FindMajorityValue finds the number that is repeated the most among the list of integers in values param.
+func FindMajorityValue(values []int) int {
+	valuesCount := map[int]int{}
+	for _, val := range values {
+		valuesCount[val] += 1
+	}
+	percentages := map[int]float64{}
+	max := -1.0
+	maxVal := -1
+	for key, val := range valuesCount {
+		percentages[key] += float64(float64(val) / float64(len(values)))
+		if percentages[key] > float64(max) {
+			max = percentages[key]
+			maxVal = key
+		}
+	}
+	return maxVal
 }
 
 func NewHonestAgent(ID uuid.UUID, Value int) Agent {
@@ -23,31 +36,48 @@ func NewHonestAgent(ID uuid.UUID, Value int) Agent {
 		value: Value,
 	}
 }
-func (a *Agent) GetValue(msg *MessageGetValue, chOut chan MessageGetValueResult) {
-	chOut <- MessageGetValueResult{
-		ID:    msg.ID,
-		Value: a.value,
-	}
+
+func (a *Agent) GetPeers() AgentsRegistry {
+	result := ReadConfigFile()
+	return result
+
+}
+func (a *Agent) GetID() uuid.UUID {
+	return a.ID
 }
 
-func (a *Agent) GetValueExpert(msg *MessageGetValue, chOut chan MessageGetValueResult) {
+func (a *Agent) GetValue(msg *MessageGetValue, chOut chan MessageGetValueResult, withPeers bool) {
+	if withPeers {
+		a.getValueExpert(msg, chOut)
+
+	} else {
+		chOut <- MessageGetValueResult{
+			ID:      msg.ID,
+			AgentID: a.ID,
+			Value:   a.value,
+		}
+	}
+
+}
+func (a *Agent) getValueExpert(msg *MessageGetValue, chOut chan MessageGetValueResult) {
 	agentsNet := a.GetPeers()
-	onlineAgents := 0
 	chAgents := make(chan MessageGetValueResult)
-	for _, agent := range *agentsNet {
-		agent.GetValue(msg, chAgents)
-		if agent.IsOnline() {
-			onlineAgents += 1
+	msg.KnownValues[a.ID] = a.value
+	for _, agent := range agentsNet {
+		if _, ok := msg.KnownValues[a.ID]; !ok {
+			agent.GetValue(msg, chAgents, true)
 		}
 	}
 	var values []int
-	for msg := range chAgents {
-		values = append(values, msg.Value)
+	for msgResponse := range chAgents {
+		values = append(values, msgResponse.Value)
+		msg.KnownValues[msgResponse.AgentID] = msgResponse.Value
 	}
-	maxVal := client.FindMajorityValue(values, onlineAgents)
+	maxVal := consensus.FindMajorityValue(values)
 	chOut <- MessageGetValueResult{
-		ID:    msg.ID,
-		Value: maxVal,
+		ID:      msg.ID,
+		AgentID: a.ID,
+		Value:   maxVal,
 	}
 }
 

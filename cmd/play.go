@@ -15,7 +15,7 @@ var playCmd = &cobra.Command{
 	Short: "Plays a round of liarslie.",
 	Long:  `Queries the agents to determines the real value V.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		client.PlayStandard(client.CurrentClient.Agents)
+		client.PlayStandard(client.CurrentClient.AgentsFullNetwork)
 	},
 }
 

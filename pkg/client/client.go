@@ -17,7 +17,7 @@ import (
 var CurrentClient LiarsLieClient
 
 type LiarsLieClient struct {
-	Agents agents.AgentsRegistry
+	AgentsFullNetwork agents.AgentsRegistry
 }
 
 func spawnLiars(pool agents.AgentsRegistry, maxValue int, liarRatio float32, numAgents int) {
@@ -59,8 +59,8 @@ func writeConfigFile(pool *agents.AgentsRegistry) {
 	}
 
 	defer f.Close()
-	for key, agent := range *pool {
-		_, err2 := f.WriteString(fmt.Sprintf("%s %v\n", key, agent.IsOnline()))
+	for key, _ := range *pool {
+		_, err2 := f.WriteString(fmt.Sprintf("%s\n", key))
 		if err2 != nil {
 			log.Fatal(err)
 		}
@@ -91,7 +91,7 @@ func StartClient(rootCmd *cobra.Command, value int, maxValue int, numAgents int,
 		os.Exit(1)
 	}
 	CurrentClient = LiarsLieClient{
-		Agents: *pool,
+		AgentsFullNetwork: *pool,
 	}
 	for {
 		fmt.Print("liarslie>>")
@@ -105,10 +105,8 @@ func StartClient(rootCmd *cobra.Command, value int, maxValue int, numAgents int,
 		}
 
 		cmdPieces := strings.Split(text, " ")
-		if len(cmdPieces) == 0 || (len(cmdPieces) == 1 && cmdPieces[0] == "") {
-			continue
-		}
-		command, args, err := rootCmd.Parent().Find([]string{cmdPieces[0]})
+
+		command, args, err := rootCmd.Parent().Find(cmdPieces)
 		if err != nil {
 			log.Printf("Unknown Command to execute : %s\n", text)
 			continue
@@ -131,7 +129,7 @@ func StartClient(rootCmd *cobra.Command, value int, maxValue int, numAgents int,
 
 func StopClient() {
 
-	for _, val := range CurrentClient.Agents {
+	for _, val := range CurrentClient.AgentsFullNetwork {
 		val.SetOnline(false)
 	}
 	cleanFile()

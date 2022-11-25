@@ -3,7 +3,8 @@ package agents
 import "github.com/google/uuid"
 
 type MessageGetValue struct {
-	ID uuid.UUID
+	ID          uuid.UUID
+	KnownValues map[uuid.UUID]int
 }
 
 type MessageStop struct {
@@ -20,8 +21,9 @@ type LiarsLieMessageResult struct {
 }
 
 type MessageGetValueResult struct {
-	ID    uuid.UUID
-	Value int
+	ID      uuid.UUID
+	AgentID uuid.UUID
+	Value   int
 }
 
 type MessageStopResult struct {

@@ -2,7 +2,11 @@ package client
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	"liarslie/pkg/agents"
+	"liarslie/pkg/consensus"
+	"math/rand"
+	"os"
 	"sync"
 	"time"
 )
@@ -21,35 +25,19 @@ func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
 		return true // timed out
 	}
 }
-func FindMajorityValue(values []int, numAgents int) int {
-	valuesCount := map[int]int{}
-	for _, val := range values {
-		valuesCount[val] += 1
-	}
-	percentages := map[int]float64{}
-	max := -1.0
-	maxVal := -1
-	for key, val := range valuesCount {
-		percentages[key] += float64(float64(val) / float64(numAgents))
-		if percentages[key] > float64(max) {
-			max = percentages[key]
-			maxVal = key
-		}
-	}
-	return maxVal
-}
 
-// PlayStandard excutes the game by querying all agents on the network and determining real value V.
-func PlayStandard(agentsRegistry agents.AgentsRegistry) {
+// queryAgents queries the given set of agents to get the real value of the network v.
+func queryAgents(agentsRegistry agents.AgentsRegistry, queryAll bool, queryOthers bool, consensusRatio float32) int {
 	chOut := make(chan agents.MessageGetValueResult)
 	wg := new(sync.WaitGroup)
 	wg.Add(len(agentsRegistry))
 	for key, agent := range agentsRegistry {
 		msg := agents.MessageGetValue{
-			ID: key,
+			ID:          key,
+			KnownValues: map[uuid.UUID]int{},
 		}
 
-		go agent.GetValue(&msg, chOut)
+		go agent.GetValue(&msg, chOut, queryOthers)
 	}
 	var values []int
 	go func() {
@@ -60,17 +48,51 @@ func PlayStandard(agentsRegistry agents.AgentsRegistry) {
 	}()
 	if waitTimeout(wg, time.Second*5) {
 		fmt.Println("Timed out waiting for agents.")
-		return
+		return -1
 	} else {
-
+		var maxVal int
 		fmt.Println("values", values)
-		maxVal := FindMajorityValue(values, len(agentsRegistry))
+		if queryAll {
+			maxVal = consensus.FindMajorityValue(values)
+		} else {
+			maxVal = consensus.FindMajorityValuePercent(values, consensusRatio)
+		}
+
 		fmt.Println("The network value is: ", maxVal)
 		close(chOut)
+		return maxVal
 	}
 
 }
 
-func PlayExpert() {
+// getOnlineAgents filters to only online agents respecting the given liar ratio.
+func getOnlineAgents(agentsRegistry agents.AgentsRegistry) []agents.AgentBehaviour {
+	result := []agents.AgentBehaviour{}
+	for _, agent := range agentsRegistry {
+		if agent.IsOnline() {
+			result = append(result, agent)
+		}
+	}
+	return result
+}
 
+// PlayStandard executes the game by querying all agents on the network and determining real value V.
+func PlayStandard(agentsRegistry agents.AgentsRegistry) {
+	queryAgents(agentsRegistry, true, false, -1.0) // liarRatio not used
+}
+
+// PlayExpert executes the game by querying the given subset of agents and given liarRatio
+func PlayExpert(agentsRegistry agents.AgentsRegistry, numAgents int, liarRatio float32) {
+	onlineAgents := getOnlineAgents(agentsRegistry)
+	if len(onlineAgents) < numAgents {
+		fmt.Println(fmt.Sprintf("Not enough online agents to play in expert mode. Want %d have %d", numAgents, len(onlineAgents)))
+		os.Exit(1)
+	}
+	indexesToQuery := rand.Perm(len(onlineAgents))
+	onlineRegistry := agents.AgentsRegistry{}
+	for _, index := range indexesToQuery {
+		agent := onlineAgents[index]
+		onlineRegistry[agent.GetID()] = agent
+	}
+	queryAgents(onlineRegistry, false, true, liarRatio)
 }

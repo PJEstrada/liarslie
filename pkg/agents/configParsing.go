@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"os"
-	"strconv"
 	"strings"
 )
 
-func ReadConfigFile() *AgentsRegistry {
+func ReadConfigFile() AgentsRegistry {
 	readFile, err := os.Open("app.config")
 	defer readFile.Close()
 	if err != nil {
@@ -29,17 +28,11 @@ func ReadConfigFile() *AgentsRegistry {
 			os.Exit(1)
 			return nil
 		}
-		online, err := strconv.ParseBool(values[1])
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-			return nil
-		}
 		agent := Agent{
 			ID:     id,
-			Online: online,
+			Online: true,
 		}
 		result[agent.ID] = &agent
 	}
-	return &result
+	return result
 }

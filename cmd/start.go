@@ -19,22 +19,22 @@ var startCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		value, err := cmd.Flags().GetInt("value")
 		if err != nil {
-			fmt.Sprintf("Cannot Start Agents. Missing: %s", err.Error())
+			fmt.Println(fmt.Sprintf("Cannot Start AgentsFullNetwork. Missing: %s", err.Error()))
 			os.Exit(1)
 		}
 		maxValue, err := cmd.Flags().GetInt("max-value")
 		if err != nil {
-			fmt.Sprintf("Cannot Start Agents. Missing: %s", err.Error())
+			fmt.Println(fmt.Sprintf("Cannot Start AgentsFullNetwork. Missing: %s", err.Error()))
 			os.Exit(1)
 		}
 		numAgents, err := cmd.Flags().GetInt("num-agents")
 		if err != nil {
-			fmt.Sprintf("Cannot Start Agents. Missing: %s", err.Error())
+			fmt.Println(fmt.Sprintf("Cannot Start AgentsFullNetwork. Missing: %s", err.Error()))
 			os.Exit(1)
 		}
 		liarRatio, err := cmd.Flags().GetFloat32("liar-ratio")
 		if err != nil {
-			fmt.Sprintf("Cannot Start Agents. Missing: %s", err.Error())
+			fmt.Println(fmt.Sprintf("Cannot Start AgentsFullNetwork. Missing: %s", err.Error()))
 			os.Exit(1)
 		}
 		client.StartClient(cmd, value, maxValue, numAgents, liarRatio)

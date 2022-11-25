@@ -2,7 +2,6 @@ package agents
 
 import (
 	"github.com/google/uuid"
-	"sync"
 )
 
 type LiarAgent struct {
@@ -18,11 +17,19 @@ func NewLiarAgent(id uuid.UUID, value int) LiarAgent {
 		value: value,
 	}
 }
+func (a *LiarAgent) GetPeers() AgentsRegistry {
+	return AgentsRegistry{}
+}
 
-func (a *LiarAgent) GetValue(msg *MessageGetValue, chOut chan MessageGetValueResult, wg *sync.WaitGroup) {
+func (a *LiarAgent) GetID() uuid.UUID {
+	return a.ID
+}
+
+func (a *LiarAgent) GetValue(msg *MessageGetValue, chOut chan MessageGetValueResult, withPeers bool) {
 	chOut <- MessageGetValueResult{
-		ID:    msg.ID,
-		Value: a.value,
+		ID:      msg.ID,
+		AgentID: a.ID,
+		Value:   a.value,
 	}
 }
 
