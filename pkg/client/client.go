@@ -20,6 +20,7 @@ type LiarsLieClient struct {
 	AgentsFullNetwork agents.AgentsRegistry
 }
 
+// spawnLiars spawns the given number of liar agents respecting the given ratio
 func spawnLiars(pool agents.AgentsRegistry, maxValue int, liarRatio float32, numAgents int) {
 	numLiars := int(math.Round(float64(float32(numAgents) * liarRatio)))
 	fmt.Println("Num liars: ", numLiars)
@@ -31,6 +32,7 @@ func spawnLiars(pool agents.AgentsRegistry, maxValue int, liarRatio float32, num
 	}
 }
 
+// spawnHonestAgents spawns the given number of honest agents respecting the given ratio
 func spawnHonestAgents(pool agents.AgentsRegistry, value int, numAgents int, liarRatio float32) {
 	numHonest := int(math.Round(float64((1 - liarRatio) * float32(numAgents))))
 	fmt.Println("Num honest: ", numHonest)
@@ -41,6 +43,7 @@ func spawnHonestAgents(pool agents.AgentsRegistry, value int, numAgents int, lia
 	}
 }
 
+// LaunchAgents creates liar and honest agents based on liar ratio and number given.
 func LaunchAgents(value int, maxValue int, numAgents int, liarRatio float32) (*agents.AgentsRegistry, error) {
 	if liarRatio < 0 || liarRatio > 1 {
 		return nil, errors.New("Invalid liar ratio, must be between 0 and 1.")
@@ -52,6 +55,8 @@ func LaunchAgents(value int, maxValue int, numAgents int, liarRatio float32) (*a
 
 	return &pool, nil
 }
+
+// writeConfigFile writes agents IDs on a config file
 func writeConfigFile(pool *agents.AgentsRegistry) {
 	f, err := os.Create("app.config")
 	if err != nil {
@@ -67,6 +72,7 @@ func writeConfigFile(pool *agents.AgentsRegistry) {
 	}
 }
 
+// cleanFile cleans the text on the app.config file
 func cleanFile() {
 	f, err := os.Create("app.config")
 	if err != nil {
@@ -78,24 +84,24 @@ func cleanFile() {
 
 }
 
-func StartClient(rootCmd *cobra.Command, value int, maxValue int, numAgents int, liarRatio float32) {
+// addNetworkPeersToAgents initializes peer network registry on the existing agents.
+func addNetworkPeersToAgents(pool *agents.AgentsRegistry) {
+	// Populate Peers
+	for _, agent := range *pool {
+		agent.GetPeers()
+	}
+}
+
+// displayShell shows the command prompt on terminal and starts waiting for user input.
+func displayShell(rootCmd *cobra.Command) {
 
 	reader := bufio.NewReader(os.Stdin)
-	pool, err := LaunchAgents(value, maxValue, numAgents, liarRatio)
-	for _, agent := range *pool {
-		agent.SetOnline(true)
-	}
-	writeConfigFile(pool)
-	if err != nil {
-		fmt.Sprintf("Error launching agents: %s", err.Error())
-		os.Exit(1)
-	}
-	CurrentClient = LiarsLieClient{
-		AgentsFullNetwork: *pool,
-	}
 	for {
 		fmt.Print("liarslie>>")
 		text, _ := reader.ReadString('\n')
+		if text == "\n" {
+			continue
+		}
 		text = strings.Trim(text, "\r\n")
 
 		if strings.Compare(text, "exit") == 0 {
@@ -111,22 +117,34 @@ func StartClient(rootCmd *cobra.Command, value int, maxValue int, numAgents int,
 			log.Printf("Unknown Command to execute : %s\n", text)
 			continue
 		}
-
-		args = append(args, cmdPieces[1:]...)
+		command.ParseFlags(args)
 		command.Run(command, args)
 		command.Execute()
-		//if err != nil || command == rootCmd {
-		//	log.Printf("Unknown Command to execute : %s\n", text)
-		//	continue
-		//}
-		//
-		//args = append(args, cmdPieces[1:]...)
-		//
-		//command.Run(command, args)
-		//command.Execute()
 	}
 }
 
+// StartClient initializes agents and starts command prompt.
+func StartClient(rootCmd *cobra.Command, value int, maxValue int, numAgents int, liarRatio float32) {
+
+	pool, err := LaunchAgents(value, maxValue, numAgents, liarRatio)
+	for _, agent := range *pool {
+		agent.SetOnline(true)
+	}
+	writeConfigFile(pool)
+	if err != nil {
+		fmt.Sprintf("Error launching agents: %s", err.Error())
+		os.Exit(1)
+	}
+
+	agents.SetAgentsNetwork(*pool)
+	addNetworkPeersToAgents(pool)
+	CurrentClient = LiarsLieClient{
+		AgentsFullNetwork: *pool,
+	}
+	displayShell(rootCmd)
+}
+
+// StopClient stops all agents and exits program.
 func StopClient() {
 
 	for _, val := range CurrentClient.AgentsFullNetwork {

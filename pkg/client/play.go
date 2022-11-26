@@ -46,7 +46,7 @@ func queryAgents(agentsRegistry agents.AgentsRegistry, queryAll bool, queryOther
 			wg.Done()
 		}
 	}()
-	if waitTimeout(wg, time.Second*5) {
+	if waitTimeout(wg, time.Second*10) {
 		fmt.Println("Timed out waiting for agents.")
 		return -1
 	} else {
@@ -88,7 +88,7 @@ func PlayExpert(agentsRegistry agents.AgentsRegistry, numAgents int, liarRatio f
 		fmt.Println(fmt.Sprintf("Not enough online agents to play in expert mode. Want %d have %d", numAgents, len(onlineAgents)))
 		os.Exit(1)
 	}
-	indexesToQuery := rand.Perm(len(onlineAgents))
+	indexesToQuery := rand.Perm(numAgents)
 	onlineRegistry := agents.AgentsRegistry{}
 	for _, index := range indexesToQuery {
 		agent := onlineAgents[index]

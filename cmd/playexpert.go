@@ -16,7 +16,8 @@ var playExpertCmd = &cobra.Command{
 	Short: "Plays a round of liarslie in expert mode.",
 	Long:  `Queries the agents to determines the real value V.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		numAgents, err := cmd.Flags().GetInt("num-agents")
+		flags := cmd.Flags()
+		numAgents, err := flags.GetInt("num-agents")
 		if err != nil {
 			fmt.Println(fmt.Sprintf("Cannot Play expert mode: %s", err.Error()))
 			return

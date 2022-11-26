@@ -28,11 +28,12 @@ func ReadConfigFile() AgentsRegistry {
 			os.Exit(1)
 			return nil
 		}
-		agent := Agent{
-			ID:     id,
-			Online: true,
+		network := GetAgentsNetwork()
+		agent := network[id]
+		if agent.IsOnline() {
+			result[agent.GetID()] = agent
 		}
-		result[agent.ID] = &agent
+
 	}
 	return result
 }
