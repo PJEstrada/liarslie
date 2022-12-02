@@ -5,6 +5,7 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/spf13/cobra"
 	"liarslie/pkg/client"
@@ -19,25 +20,26 @@ var startCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		value, err := cmd.Flags().GetInt("value")
 		if err != nil {
-			fmt.Println(fmt.Sprintf("Cannot Start AgentsFullNetwork. Missing: %s", err.Error()))
+			fmt.Printf("Cannot Start AgentsFullNetwork. Missing: %s", err.Error())
 			os.Exit(1)
 		}
 		maxValue, err := cmd.Flags().GetInt("max-value")
 		if err != nil {
-			fmt.Println(fmt.Sprintf("Cannot Start AgentsFullNetwork. Missing: %s", err.Error()))
+			fmt.Printf("Cannot Start AgentsFullNetwork. Missing: %s", err.Error())
 			os.Exit(1)
 		}
 		numAgents, err := cmd.Flags().GetInt("num-agents")
 		if err != nil {
-			fmt.Println(fmt.Sprintf("Cannot Start AgentsFullNetwork. Missing: %s", err.Error()))
+			fmt.Printf("Cannot Start AgentsFullNetwork. Missing: %s", err.Error())
 			os.Exit(1)
 		}
 		liarRatio, err := cmd.Flags().GetFloat32("liar-ratio")
 		if err != nil {
-			fmt.Println(fmt.Sprintf("Cannot Start AgentsFullNetwork. Missing: %s", err.Error()))
+			fmt.Printf("Cannot Start AgentsFullNetwork. Missing: %s", err.Error())
 			os.Exit(1)
 		}
-		client.StartClient(cmd, value, maxValue, numAgents, liarRatio)
+		reader := bufio.NewReader(os.Stdin)
+		client.StartClient(cmd, value, maxValue, numAgents, liarRatio, reader)
 	},
 }
 

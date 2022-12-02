@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"liarslie/pkg/client"
+	"log"
 )
 
 // playExpertCmd represents the start command
@@ -19,15 +20,18 @@ var playExpertCmd = &cobra.Command{
 		flags := cmd.Flags()
 		numAgents, err := flags.GetInt("num-agents")
 		if err != nil {
-			fmt.Println(fmt.Sprintf("Cannot Play expert mode: %s", err.Error()))
+			fmt.Printf("Cannot Play expert mode: %s", err.Error())
 			return
 		}
 		liarRatio, err := cmd.Flags().GetFloat32("liar-ratio")
 		if err != nil {
-			fmt.Println(fmt.Sprintf("Cannot Play export mode: %s", err.Error()))
+			fmt.Printf("Cannot Play expert mode: %s", err.Error())
 			return
 		}
-		client.PlayExpert(client.CurrentClient.AgentsFullNetwork, numAgents, liarRatio)
+		_, err = client.PlayExpert(client.CurrentClient.AgentsFullNetwork, numAgents, liarRatio)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
 	},
 }
 

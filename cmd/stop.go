@@ -16,7 +16,7 @@ var stopCmd = &cobra.Command{
 	Long:  `Stops the game and exits.`,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		client.StopClient()
+		client.StopClient(client.CurrentClient)
 	},
 }
 

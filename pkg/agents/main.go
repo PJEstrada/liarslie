@@ -2,7 +2,12 @@ package agents
 
 import "github.com/google/uuid"
 
-type AgentsRegistry map[uuid.UUID]AgentBehaviour
+type AgentChannel struct {
+	ChIn   chan LiarsLieMessageRequest
+	ID     uuid.UUID
+	Online bool
+}
+type AgentsRegistry map[uuid.UUID]*AgentChannel
 
 var agentsNetwork AgentsRegistry
 

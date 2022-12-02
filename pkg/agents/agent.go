@@ -14,78 +14,115 @@ type Agent struct {
 	Online           bool
 	MsgNetworkValues sync.Map
 	peers            *AgentsRegistry
+	channelIn        chan LiarsLieMessageRequest
 }
 
-// waitTimeout waits for a waitgroup to execute before the given timeout
-func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
-	c := make(chan struct{})
+func (a *Agent) Start() chan LiarsLieMessageRequest {
+	a.channelIn = make(chan LiarsLieMessageRequest)
 	go func() {
-		defer close(c)
+		for {
+			select {
+			case msg := <-a.channelIn:
+				if !a.IsOnline() {
+					msg.ChOut <- LiarsLieMessageResult{}
+				}
+				if msg.MessageGetValue != nil {
+					a.GetValue(msg.MessageGetValue, msg.ChOut)
+				} else if msg.MessageStop != nil {
+
+				} else if msg.MessageSetPeers != nil {
+					a.SetPeers(msg.Peers, msg.ChOut)
+				} else if msg.MessageSetOnline != nil {
+					a.setOnline(msg.MessageSetOnline.Online, msg.ChOut)
+				} else if msg.MessageSetValue != nil {
+					a.SetValue(msg.MessageSetValue.Value, msg.ChOut)
+				}
+			}
+		}
+	}()
+	return a.channelIn
+
+}
+
+// SetValue sets the agent value (network reconfig only)
+func (a *Agent) SetValue(v int, chout chan LiarsLieMessageResult) {
+	a.value = v
+	chout <- LiarsLieMessageResult{
+		MessageSetValueResult: &MessageSetValueResult{
+			Value: a.value,
+			ID:    a.ID,
+		},
+	}
+}
+
+// WaitTimeoutGetValue waits for a waitgroup to execute before the given timeout
+func (a *Agent) WaitTimeoutGetValue(wg *sync.WaitGroup, timeout time.Duration, c chan LiarsLieMessageResult) *LiarsLieMessageResult {
+	go func() {
 		wg.Wait()
 	}()
 	select {
-	case <-c:
-		return false // completed normally
+	case res := <-c:
+		return &res // completed normally
 	case <-time.After(timeout):
-		defer close(c)
-		return true // timed out
+		return nil // timed out
 	}
 }
 
-// FindMajorityValue finds the number that is repeated the most among the list of integers in values param.
-func FindMajorityValue(values []int) int {
-	valuesCount := map[int]int{}
-	for _, val := range values {
-		valuesCount[val] += 1
-	}
-	percentages := map[int]float64{}
-	max := -1.0
-	maxVal := -1
-	for key, val := range valuesCount {
-		percentages[key] += float64(float64(val) / float64(len(values)))
-		if percentages[key] > float64(max) {
-			max = percentages[key]
-			maxVal = key
-		}
-	}
-	return maxVal
-}
-
+// NewHonestAgent creates a new agent object.
 func NewHonestAgent(ID uuid.UUID, Value int) Agent {
 	return Agent{
 		ID:               ID,
 		value:            Value,
 		MsgNetworkValues: sync.Map{},
+		Online:           true,
 	}
 }
 
-func (a *Agent) GetPeers() AgentsRegistry {
-	if a.peers == nil {
-		result := ReadConfigFile()
-		return result
-
-	} else {
-		return *a.peers
+// SetPeers sets the peer agents value
+func (a *Agent) SetPeers(peers AgentsRegistry, chout chan LiarsLieMessageResult) {
+	a.peers = &peers
+	chout <- LiarsLieMessageResult{
+		MessageSetPeersResult: &MessageSetPeersResult{
+			Peers: peers,
+		},
 	}
+}
+
+// GetPeers gets the peer agents of the agent.
+func (a *Agent) GetPeers() (AgentsRegistry, error) {
+	return *a.peers, nil
 
 }
+
+// GetID gets the id of the agent.
 func (a *Agent) GetID() uuid.UUID {
 	return a.ID
 }
 
-func (a *Agent) GetValue(msg *MessageGetValue, chOut chan MessageGetValueResult, withPeers bool) {
-	if withPeers {
-		a.getValueExpert(*msg, chOut)
+// GetValue gets the value of the agent. Can be without asking other agents for their value or asking all peers for its value.
+func (a *Agent) GetValue(msg *MessageGetValue, chOut chan LiarsLieMessageResult) error {
+	if msg.WithPeers {
+		err := a.getValueExpert(*msg, chOut)
+		if err != nil {
+			return err
+		}
 
 	} else {
-		chOut <- MessageGetValueResult{
-			ID:      msg.ID,
-			AgentID: a.ID,
-			Value:   a.value,
+		chOut <- LiarsLieMessageResult{
+			MessageGetValueResult: &MessageGetValueResult{
+				ID:      msg.ID,
+				AgentID: a.ID,
+				Value:   a.value,
+			},
 		}
 	}
+	// We are assuming this a unique channel for this sender, thus the sender can safely close it.
+	defer close(chOut)
+	return nil
 
 }
+
+// copyMap copies the given map
 func copyMap(m map[uuid.UUID]int) map[uuid.UUID]int {
 	res := map[uuid.UUID]int{}
 	for key, val := range m {
@@ -93,6 +130,8 @@ func copyMap(m map[uuid.UUID]int) map[uuid.UUID]int {
 	}
 	return res
 }
+
+// getValueForMsg gets a cached value from the agent
 func (a *Agent) getValueForMsg(msgID uuid.UUID) (int, bool) {
 	val, ok := a.MsgNetworkValues.Load(msgID)
 	var result int
@@ -101,79 +140,94 @@ func (a *Agent) getValueForMsg(msgID uuid.UUID) (int, bool) {
 	}
 	return result, ok
 }
+
+// setValueForMessage sets the cached value for a given message on the agent.
 func (a *Agent) setValueForMessage(msgID uuid.UUID, value int) {
 	a.MsgNetworkValues.Store(msgID, value)
 }
-func (a *Agent) getValueExpert(msg MessageGetValue, chOut chan MessageGetValueResult) {
+
+// queryPeers asks all peer agents for its value and determines majority
+func (a *Agent) queryPeers(agentsNet AgentsRegistry, msg MessageGetValue) []int {
+	var values []int
+	values = append(values, a.value)
+	for _, agent := range agentsNet {
+		fmt.Println("doing age", agent.ChIn)
+		chOutPeer := make(chan LiarsLieMessageResult)
+		wg := new(sync.WaitGroup)
+		wg.Add(1)
+		agent.ChIn <- LiarsLieMessageRequest{
+			MessageGetValue: &MessageGetValue{
+				ID:        msg.ID,
+				WithPeers: false,
+			},
+			ChOut: chOutPeer,
+		}
+		msgResponse := a.WaitTimeoutGetValue(wg, time.Second*3, chOutPeer)
+		if msgResponse == nil {
+			// Timeout case: no value apperessspnded.
+			continue
+		}
+		// Successful Response from Agent
+		if msgResponse.MessageGetValueResult != nil {
+			values = append(values, msgResponse.MessageGetValueResult.Value)
+		}
+
+	}
+	return values
+}
+
+// getValueExpert gets a value for playing expert mode.
+func (a *Agent) getValueExpert(msg MessageGetValue, chOut chan LiarsLieMessageResult) error {
 	// Case of value already processed by Node
 	existingValue, found := a.getValueForMsg(msg.ID)
 	if found {
-		fmt.Println("Existing Value on node", a.ID, existingValue)
-		chOut <- MessageGetValueResult{
+		chOut <- LiarsLieMessageResult{
+			MessageGetValueResult: &MessageGetValueResult{
+				ID:      msg.ID,
+				AgentID: a.ID,
+				Value:   existingValue,
+			},
+		}
+		return nil
+	}
+	// New message processing
+	agentsNet, err := a.GetPeers()
+	if err != nil {
+		return err
+	}
+
+	// Query each peer agent for its value
+	values := a.queryPeers(agentsNet, msg)
+
+	// Determine real network value based on all peer values obtained.
+	networkVal := consensus.FindMajorityValue(values)
+	a.setValueForMessage(msg.ID, networkVal)
+	// Set Latest Message Value
+	a.value = networkVal
+	// Send Response on Channel
+	chOut <- LiarsLieMessageResult{
+		MessageGetValueResult: &MessageGetValueResult{
 			ID:      msg.ID,
 			AgentID: a.ID,
-			Value:   existingValue,
-		}
-		return
-	}
-	agentsNet := a.GetPeers()
-	chAgents := make(chan MessageGetValueResult)
-	fmt.Println("Node value is", a.value, a.ID)
-	wg := new(sync.WaitGroup)
-	var values []int
-	fmt.Println(fmt.Sprintf("GET VALUE EXPERT -------- %s", a.GetID().String()))
-	msg.KnownValues[a.ID] = a.value
-	fmt.Println("KNOWN", msg.KnownValues)
-	numCalls := 0
-	numReturns := 0
-	for _, agent := range agentsNet {
-		if _, ok := msg.KnownValues[agent.GetID()]; !ok {
-			//fmt.Println(fmt.Sprintf("[%s] querying %s", a.ID.String(), agent.GetID().String()))
-			wg.Add(1)
-			numCalls += 1
-			go agent.GetValue(&MessageGetValue{
-				ID:          msg.ID,
-				KnownValues: copyMap(msg.KnownValues),
-			}, chAgents, true)
-		} else {
-			fmt.Println(fmt.Sprintf("[%s] using cached %d value from: %s", a.ID.String(), msg.KnownValues[agent.GetID()], agent.GetID().String()))
-			values = append(values, msg.KnownValues[agent.GetID()])
-		}
+			Value:   networkVal,
+		},
 	}
 
-	go func() {
-		for msgResponse := range chAgents {
-			numReturns += 1
-			fmt.Println("ID - NUM CALLS - NUM RETURNS", a.ID, numCalls, numReturns)
-			fmt.Println("msg response", msgResponse)
-			values = append(values, msgResponse.Value)
-			//msg.KnownValues[msgResponse.AgentID] = msgResponse.Value
-			wg.Done()
-		}
-	}()
-	var networkVal int
-	if waitTimeout(wg, time.Second*2) {
-		fmt.Println(fmt.Sprintf("[Agent %s] Timeout querying agents ", a.ID.String()))
-		fmt.Println("values timeout", values)
-		networkVal = consensus.FindMajorityValue(values)
-	} else {
-
-		networkVal = consensus.FindMajorityValue(values)
-		fmt.Println(fmt.Sprintf("Finished: [Agent %s] Network Val: %d", a.ID.String(), networkVal))
-	}
-	a.setValueForMessage(msg.ID, networkVal)
-	defer close(chAgents)
-	chOut <- MessageGetValueResult{
-		ID:      msg.ID,
-		AgentID: a.ID,
-		Value:   networkVal,
-	}
+	return nil
 }
 
-func (a *Agent) SetOnline(v bool) {
+// SetOnline sets online value
+func (a *Agent) setOnline(v bool, chOut chan LiarsLieMessageResult) {
 	a.Online = v
+	chOut <- LiarsLieMessageResult{
+		MessageSetOnlineResult: &MessageSetOnlineResult{
+			Online: a.Online,
+		},
+	}
+	defer close(chOut)
 }
 
+// IsOnline checks if agent is online
 func (a *Agent) IsOnline() bool {
 	return a.Online
 }
